@@ -1,5 +1,5 @@
-import shap
 import numpy as np
+from src.data.dataset_config import DATASET_CONFIG
 from moabb.datasets import BNCI2014_001, Dreyer2023C, Beetl2021_A
 from moabb.paradigms import FilterBankMotorImagery
 from sklearn.model_selection import train_test_split
@@ -7,9 +7,11 @@ from pyriemann.classification import TSClassifier, MDM
 from pyriemann.estimation import Covariances
 from sklearn.pipeline import Pipeline
 from src.Visualization.beeswarm import shap_beeswarm, shap_beeswarm_grouped
-
+import os
 
 np.random.seed(3)
+
+import argparse
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -30,21 +32,20 @@ def parse_args():
 
     return parser.parse_args()
 
-    if __name__ == "__main__":
-        args = parse_args()
-        cfg = DATASET_CONFIG[args.dataset]
-        dataset = cfg["dataset"]
-        SENSORS = cfg["sensors"]
+if __name__ == "__main__":
+    args = parse_args()
+    cfg = DATASET_CONFIG[args.dataset]
+    dataset = cfg["dataset"]
+    SENSORS = cfg["sensors"]
 
-        OUT_DIR = f"Results/Shapley/{args.clf}/{args.dataset}/Shapley_SPD"
+    OUT_DIR = f"../../Results/Shapley/{args.clf}/{args.dataset}/Shapley_optim"
 
-        SCORE_THRESHOLD = 0.75
+    SCORE_THRESHOLD = 0.75
 
 
-        paradigm = FilterBankMotorImagery(filters=[[7, 35]], events={"left_hand": 1, "right_hand": 2})
-        N_SPLITS = args.n_split
+    paradigm = FilterBankMotorImagery(filters=[[7, 35]], events={"left_hand": 1, "right_hand": 2})
 
-        os.makedirs(OUT_DIR, exist_ok=True) 
+    os.makedirs(OUT_DIR, exist_ok=True) 
 
     order = [
         "Fp1","Fp2",
@@ -58,10 +59,9 @@ def parse_args():
     ]
 
 
-    shap_values = np.load(f'{OUT_DIR}/all_shap_values.pkl', allow_pickle=True)
-    print(len(shap_values[0]))
+    shap_values = np.load(f'{OUT_DIR}/all_subjects_mdm.npy')
 
-
+    
     shap_per_subject_list = []
 
     for i in range (len(shap_values)):
@@ -137,7 +137,7 @@ def parse_args():
         X_diff_power_mean = []
 
         for j in range (n_splits):
-            X_train,X_test,y_train,y_test = train_test_split(X,y, train_size=0.8, stratify=y, random_state=j)
+            X_train,X_test,y_train,y_test = train_test_split(X,y, train_size=0.8, stratify=y, random_state=3)
 
             baseline = np.mean(X_train,axis=0)
             power_baseline = np.mean(baseline**2,axis=1)
@@ -157,4 +157,4 @@ def parse_args():
             )
             X_diff_power_mean.append(power_diff)
 
-        shap_beeswarm_grouped(np.array(shap_per_subject_list[i]), SENSORS, subject, regions, channel_to_hemisphere, OUT_DIR) #np.mean(X_diff_power_mean,axis=0))
+        shap_beeswarm(np.array(shap_per_subject_list[i])[0:2,:], SENSORS, subject, OUT_DIR) #, regions, channel_to_hemisphere, OUT_DIR)

@@ -2,7 +2,7 @@ from moabb.datasets import BNCI2014_001, Dreyer2023C, Beetl2021_A
 import numpy as np
 
 DATASET_CONFIG = {
-    "BNCI2014-001": dict(
+    "BNCI2014_001": dict(
         dataset=BNCI2014_001(),
         session="0train",
         good_subjects=np.array([1, 3, 8, 9]),

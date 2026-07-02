@@ -4,7 +4,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 
-def shap_beeswarm(shap_values, sensor_names, subject, X_diff_power):
+def shap_beeswarm(shap_values, sensor_names, subject,OUT_DIR):
     # X_diff_power : (n_trials, n_channels)
 
     n_trials, n_channels = shap_values.shape
@@ -14,7 +14,7 @@ def shap_beeswarm(shap_values, sensor_names, subject, X_diff_power):
             data.append({
                 "channel": sensor_names[ch],
                 "shap": shap_values[i, ch],
-                "log_power_diff": X_diff_power[i, ch]
+                #"log_power_diff": X_diff_power[i, ch]
             })
     df = pd.DataFrame(data)
 
@@ -32,7 +32,7 @@ def shap_beeswarm(shap_values, sensor_names, subject, X_diff_power):
     )
     
     # Colorbar
-    norm = plt.Normalize(df["log_power_diff"].min(), df["log_power_diff"].max())
+    #norm = plt.Normalize(df["log_power_diff"].min(), df["log_power_diff"].max())
     #sm = plt.cm.ScalarMappable(cmap="coolwarm", norm=norm)
     #plt.colorbar(sm, ax=scatter.axes, label="Log-power vs baseline")
     
