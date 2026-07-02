@@ -1,0 +1,3 @@
+This is an implementation of Permutation Feature Importance and Shapley values in the context of BCI, using EEGs. 
+First, there is an implementation with transformations applied on the EEG signal matrices before applying Riemannian tools to the matrices in order to do the classification.
+Then, there is an implementation made to work directly on SPD matrices, which generalizes the methods to non BCI applications. 

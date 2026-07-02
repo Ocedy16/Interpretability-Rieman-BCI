@@ -1,0 +1,177 @@
+import torch
+import pymanopt
+import numpy as np
+from pyriemann.classification import MDM, TSClassifier
+from pyriemann.utils.mean import mean_riemann
+from pyriemann.estimation import Covariances
+from moabb.paradigms import FilterBankMotorImagery
+from moabb.datasets import BNCI2014_001, Dreyer2023C, Beetl2021_A, AlexMI
+from sklearn.model_selection import train_test_split
+from src.Visualization.topomap import plot_topomap, plot_pannel
+from src.Shapley.shapley_spd import proj_on_spd, KernelShap, stable_predict, compute_shapley
+from functools import partial
+import math
+import matplotlib.pyplot as plt
+import os
+import pickle
+
+np.random.seed(3)
+
+import argparse
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=list(DATASET_CONFIG.keys()),
+        required=True,
+        help="Dataset à utiliser : BNCI2014_001, Dreyer2023C, Beetl2021_A"
+    )
+    parser.add_argument(
+        "--clf",
+        type=str,
+        choices=["MDM", "TSClassifier"],
+        required=True,
+        help="Classifieur à utiliser : MDM, TSClassifier"
+    )
+    parser.add_argument(
+        "--n_splits",
+        type=int,
+        default=10,
+        help="Nombre de splits (défaut: 10)"
+    )
+
+    parser.add_argument(
+        "--visu_only",
+        type=bool,
+        default=False,
+        help="Si False, le programme générera les valeurs de Shapley et produira les heatmaps correspondantes.\nSi False, il produira des heatmaps à partir de fichiers existants."
+    )
+
+    parser.add_argument(
+        "--eigenval_info",
+        type=bool,
+        default=False,
+        help="Si True, le programme affichera des informations sur les valeurs propres des matrices avant projection."
+    )
+
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    args = parse_args()
+    cfg = DATASET_CONFIG[args.dataset]
+    dataset = cfg["dataset"]
+    SENSORS = cfg["sensors"]
+
+    OUT_DIR = f'Results/Permutation/{args.clf}/{args.dataset}/With_cue'
+
+    N_SPLITS = args.n_splits
+    N_PERMS = args.n_perms
+    SCORE_THRESHOLD = 0.75
+
+    classifier = args.clf
+
+
+    paradigm = FilterBankMotorImagery(filters=[[7, 35]],events={"left_hand": 1, "right_hand": 2})
+
+    pipeline = Pipeline([
+        ("cov", Covariances()),
+        ("clf", classifier())
+    ])
+
+percent_spd = []
+spd_values = []
+eigenval_pos = []
+
+
+if program == "covariances":
+    if not args.visu_only:
+        paradigm = FilterBankMotorImagery(filters=[(7, 35)], n_classes = 3)#events ={"left_hand": 1, "right_hand": 2})
+        all_subjects_shap_values = []
+        all_mean_shap_values = []
+        all_scores = []
+        good_subjects_shap = []
+        good_subjects_scores = []
+        bad_subjects_shap = []
+        bad_subjects_scores = []
+
+        for subject in dataset.subject_list :  
+            print("Subject",subject)  
+            X,y,meta = paradigm.get_data(dataset=dataset, subjects=[subject])
+            shap_values, scores = compute_shapley(X,y,N_SPLITS)
+
+            #On moyenne sur tous les splits
+            mean_split_shap_values = np.mean(np.array(shap_values),axis=0)
+
+            #On retire l'axe inutile au milieu et on moyenne sur tous les exemples
+            mean_shap_values = np.mean(mean_split_shap_values,axis=0)[0]
+
+            mean_score = np.mean(np.array(scores))
+
+            all_scores.append(mean_score)
+            all_subjects_shap_values.append(shap_values)
+            all_mean_shap_values.append(mean_shap_values)
+            if mean_score > SCORE_THRESHOLD : 
+                good_subjects_shap.append(mean_shap_values)
+                good_subjects_scores.append(mean_score)
+
+            else : 
+                bad_subjects_shap.append(mean_shap_values)
+                bad_subjects_scores.append(mean_score)
+
+        filename = os.path.join(OUT_DIR, 'all_shap_values.pkl') 
+        with open(filename,'wb') as f: 
+            pickle.dump(all_subjects_shap_values,f)
+
+        np.save(f"{OUT_DIR}/all_scores.npy", np.array(all_scores))    
+        np.save(f"{OUT_DIR}/good_subjects.npy", np.array(good_subjects_shap))
+        np.save(f"{OUT_DIR}/bad_subjects.npy", np.array(bad_subjects_shap))
+        np.save(f"{OUT_DIR}/good_subjects_scores.npy", np.array(good_subjects_scores))
+        np.save(f"{OUT_DIR}/bad_subjects_scores.npy", np.array(bad_subjects_scores))
+
+
+        plot_pannel(all_mean_shap_values,SENSORS, all_scores)
+
+    good_subjects_shap = np.load(f"{OUT_DIR}/good_subjects.npy",)
+    bad_subjects_shap = np.load(f"{OUT_DIR}/bad_subjects.npy")
+    good_subjects_scores = np.load(f"{OUT_DIR}/good_subjects_scores.npy")
+    bad_subjects_scores = np.load(f"{OUT_DIR}/bad_subjects_scores.npy")
+
+    v_max = np.max(np.abs(np.mean(np.array(good_subjects_shap), axis=0)))
+    v_min = -v_max
+
+    plot_topomap(np.mean(np.array(good_subjects_shap),axis=0),SENSORS,
+                title = f"Subjects with a classif score $\\geq$ {SCORE_THRESHOLD}\n Mean Score : {np.mean(np.array(good_subjects_scores)):.2f}",
+                vlim=(v_min,v_max),
+                savefile_name=f"{OUT_DIR}/Good_subjects.pdf",
+                cmap = 'PiYG',
+                suptitle = f'Shapley values on {dataset_name}')
+
+
+    plot_topomap(np.mean(np.array(bad_subjects_shap),axis=0),SENSORS,
+                title = f"Subjects with a classif score $< {SCORE_THRESHOLD}$\n Mean Score : {np.mean(np.array(bad_subjects_scores)):.2f}",
+                vlim=(v_min,v_max),
+                savefile_name=f"{OUT_DIR}/Bad_subjects.pdf",
+                cmap = 'PiYG',
+                suptitle = f'Shapley values on {dataset_name}'))
+
+
+    scores = np.load(f'{OUT_DIR}/feature_perm_scores_covs_matrix.npy')
+    importances = np.load(f'{OUT_DIR}/feature_perm_importances_covs_matrix.npy')
+
+    scores_reduced = np.mean(scores, axis=1)
+    importances_reduced = np.mean(importances, axis=1)
+
+
+    plot_pannel(importances_reduced, sensors, scores_reduced)
+
+
+if args.eigenval_info:
+    percent = np.load(f'{OUT_DIR}/percent_spd.npy')
+    eigenvalues_neg = np.load(f'{OUT_DIR}/spd_values.npy')
+    eigenval_pos = np.load(f'{OUT_DIR}/eigenval_pos.npy')
+    print("Percentage of SPD matrices" : np.mean(percent))
+    print("Mean negative eigenvalue", np.mean(eigenvalues_neg))
+    print("Mean positive eigenvalue", np.mean(eigenval_pos))
