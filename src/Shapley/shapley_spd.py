@@ -3,8 +3,15 @@ import torch
 import shap
 from shap import KernelExplainer
 from functools import partial
+from sklearn.model_selection import train_test_split
+from pyriemann.estimation import Covariances
+from pyriemann.utils.mean import mean_riemann
 
 
+
+percent_spd = []
+spd_values = []
+eigenval_pos = []
 
 def stable_predict(mask_2d,n_channels,current_run_signal,random_reference_signal,clf):
     # mask_2d a une forme (N_simulations, n_channels)
@@ -46,7 +53,7 @@ def KernelShap(C_train,C_test, clf, baseline,n_samples=2000):
     return all_shap_values
 
 
-def compute_shapley(X,y, n_splits):
+def compute_shapley(X,y, n_splits, clf):
     all_shap_values = []
     all_scores = []
     for i in range (n_splits):

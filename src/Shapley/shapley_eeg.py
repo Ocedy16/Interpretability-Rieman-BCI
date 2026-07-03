@@ -2,6 +2,7 @@ import numpy as np
 import shap
 from shap import KernelExplainer
 from functools import partial
+from sklearn.model_selection import train_test_split
 
 
 def stable_predict_multi(mask_2d, n_channels, n_times, current_run_signal, background_signals, pipeline):
@@ -54,13 +55,13 @@ def KernelShap(X_train,X_test,pipeline,baseline=None, multi_baseline = False, n_
     if baseline is None :
         baseline = np.mean(X_train,axis=0)
         
-    predict_fn = stable_predict_multi is multi_baseline else stable_predict
+    predict_fn = stable_predict_multi if multi_baseline else stable_predict
 
     for run_index in range(X_test.shape[0]):
         
         stable_predict_frozen = partial(stable_predict, n_times=n_times, n_channels=n_channels, 
                                         current_run_signal=X_test[run_index] , 
-                                        random_reference_signal=**({"background_signals": baseline} if multi_baseline else {"random_reference_signal": baseline}), pipeline=pipeline)
+                                        **({"background_signals": baseline} if multi_baseline else {"random_reference_signal": baseline}), pipeline=pipeline)
         explainer = KernelExplainer(stable_predict_frozen, np.zeros((1, n_channels)),seed=run_index)
         
         shap_values = explainer.shap_values(np.ones((1, n_channels)), nsamples=n_samples)
@@ -143,9 +144,9 @@ def compute_shapley(X,y, n_splits, model_config, deep= False):
         for i in range (n_splits):
             print("Split",i)
             X_train,X_test,y_train,y_test = train_test_split(X,y, train_size=0.8, stratify=y, random_state=i)
-            else :
-                pipeline.fit(X_train,y_train)
-                shap_values = KernelShap(X_train,X_test, pipeline, n_samples=1000)
+            
+            pipeline.fit(X_train,y_train)
+            shap_values = KernelShap(X_train,X_test, pipeline, n_samples=1000)
             all_shap_values.append(shap_values)
             all_scores.append(pipeline.score(X_test,y_test))
 

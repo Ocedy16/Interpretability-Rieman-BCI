@@ -120,17 +120,17 @@ DATASET_CONFIG = {
     ),
 }
 
-cfg = DATASET_CONFIG["BNCI2014_001"]
+cfg = DATASET_CONFIG["Dreyer2023C"]
 dataset = cfg["dataset"]
 session = cfg["session"]
 good_subjects = cfg["good_subjects"]
 bad_subjects = cfg["bad_subjects"]
 SENSORS = np.array(cfg["sensors"])
 
-method = "shapley"
+method = "permutation"
 
-OUT_DIR= "../../../Results/Permutation/MDM/BNCI2014_001/With_cue"
-OUT_DIR_SHAP = "../../../Results/Shapley/MDM/BNCI2014_001"
+OUT_DIR= "../../Results/Permutation/MDM/Dreyer2023C/With_cue"
+OUT_DIR_SHAP = "../../Results/Shapley/MDM/Dreyer2023C"
 
 
 
@@ -202,7 +202,9 @@ if method == "shapley" :
     shapley_eeg = np.mean(np.mean(shapley_eeg,axis=1),axis=1)[:,0,:]
     shapley_spd = np.load(f"{OUT_DIR_SHAP}/Shapley_SPD/all_shap_values.pkl",allow_pickle=True)
     shapley_spd = -np.mean(np.mean(shapley_spd,axis=1),axis=1)[:,0,:]
-    print(shapley_spd.shape,shapley_eeg.shape)
+    shapley_optim = np.load(f"{OUT_DIR_SHAP}/Shapley_optim/Lambda_1/all_subjects_mdm.npy")
+    shapley_optim = np.mean(shapley_optim, axis=1)
+    print(shapley_spd.shape,shapley_eeg.shape, shapley_optim.shape)
 
     importance_methods_shap = {'eeg':shapley_eeg,
                                 'optim':shapley_spd}
@@ -237,5 +239,5 @@ if method == "shapley" :
 
     df = pd.DataFrame(rows)
     print(df)
-    df.to_csv(f"{OUT_DIR_SHAP}/Rankings_opposite_sign.csv")
+    df.to_csv(f"{OUT_DIR_SHAP}/Rankings_eeg_spd_inverse.csv")
 

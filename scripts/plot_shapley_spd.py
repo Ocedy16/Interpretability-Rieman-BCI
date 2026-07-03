@@ -2,13 +2,17 @@ import torch
 import pymanopt
 import numpy as np
 from pyriemann.classification import MDM, TSClassifier
-from pyriemann.utils.mean import mean_riemann
 from pyriemann.estimation import Covariances
 from moabb.paradigms import FilterBankMotorImagery
 from moabb.datasets import BNCI2014_001, Dreyer2023C, Beetl2021_A, AlexMI
 from sklearn.model_selection import train_test_split
 from src.Visualization.topomap import plot_topomap, plot_pannel
-from src.Shapley.shapley_spd import proj_on_spd, KernelShap, stable_predict, compute_shapley
+from src.Shapley.shapley_spd import (
+    proj_on_spd, KernelShap, stable_predict, compute_shapley,
+    percent_spd, spd_values, eigenval_pos
+)
+from src.data.dataset_config import DATASET_CONFIG
+from sklearn.pipeline import Pipeline
 from functools import partial
 import math
 import matplotlib.pyplot as plt
@@ -39,7 +43,7 @@ def parse_args():
     parser.add_argument(
         "--n_splits",
         type=int,
-        default=10,
+        default=1,
         help="Nombre de splits (défaut: 10)"
     )
 
@@ -57,6 +61,13 @@ def parse_args():
         help="Si True, le programme affichera des informations sur les valeurs propres des matrices avant projection."
     )
 
+    parser.add_argument(
+        "--savefile",
+        type=str,
+        default = None,
+        help = "Le chemin où tu veux sauvegarder ton fichier"
+    )
+
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -65,30 +76,35 @@ if __name__ == "__main__":
     dataset = cfg["dataset"]
     SENSORS = cfg["sensors"]
 
-    OUT_DIR = f'Results/Permutation/{args.clf}/{args.dataset}/With_cue'
+    if args.savefile is None:
+
+        OUT_DIR = f'Results/Shapley/{args.clf}/{args.dataset}'
+
+    else:
+        OUT_DIR = args.savefile
+
 
     N_SPLITS = args.n_splits
-    N_PERMS = args.n_perms
     SCORE_THRESHOLD = 0.75
 
-    classifier = args.clf
+    CLASSIFIERS = {
+    "MDM": MDM,
+    "TSClassifier": TSClassifier,
+}
+
+    classifier = CLASSIFIERS[args.clf]()
 
 
     paradigm = FilterBankMotorImagery(filters=[[7, 35]],events={"left_hand": 1, "right_hand": 2})
 
     pipeline = Pipeline([
         ("cov", Covariances()),
-        ("clf", classifier())
+        ("clf", classifier)
     ])
 
-percent_spd = []
-spd_values = []
-eigenval_pos = []
 
 
-if program == "covariances":
     if not args.visu_only:
-        paradigm = FilterBankMotorImagery(filters=[(7, 35)], n_classes = 3)#events ={"left_hand": 1, "right_hand": 2})
         all_subjects_shap_values = []
         all_mean_shap_values = []
         all_scores = []
@@ -100,7 +116,7 @@ if program == "covariances":
         for subject in dataset.subject_list :  
             print("Subject",subject)  
             X,y,meta = paradigm.get_data(dataset=dataset, subjects=[subject])
-            shap_values, scores = compute_shapley(X,y,N_SPLITS)
+            shap_values, scores = compute_shapley(X,y,N_SPLITS, classifier)
 
             #On moyenne sur tous les splits
             mean_split_shap_values = np.mean(np.array(shap_values),axis=0)
@@ -132,13 +148,13 @@ if program == "covariances":
         np.save(f"{OUT_DIR}/bad_subjects_scores.npy", np.array(bad_subjects_scores))
 
 
-        plot_pannel(all_mean_shap_values,SENSORS, all_scores)
+        plot_pannel(all_mean_shap_values,dataset, SENSORS, all_scores, OUT_DIR)
 
     good_subjects_shap = np.load(f"{OUT_DIR}/good_subjects.npy",)
     bad_subjects_shap = np.load(f"{OUT_DIR}/bad_subjects.npy")
     good_subjects_scores = np.load(f"{OUT_DIR}/good_subjects_scores.npy")
     bad_subjects_scores = np.load(f"{OUT_DIR}/bad_subjects_scores.npy")
-
+    
     v_max = np.max(np.abs(np.mean(np.array(good_subjects_shap), axis=0)))
     v_min = -v_max
 
@@ -147,7 +163,7 @@ if program == "covariances":
                 vlim=(v_min,v_max),
                 savefile_name=f"{OUT_DIR}/Good_subjects.pdf",
                 cmap = 'PiYG',
-                suptitle = f'Shapley values on {dataset_name}')
+                suptitle = f'Shapley values on {args.dataset}')
 
 
     plot_topomap(np.mean(np.array(bad_subjects_shap),axis=0),SENSORS,
@@ -155,7 +171,7 @@ if program == "covariances":
                 vlim=(v_min,v_max),
                 savefile_name=f"{OUT_DIR}/Bad_subjects.pdf",
                 cmap = 'PiYG',
-                suptitle = f'Shapley values on {dataset_name}'))
+                suptitle = f'Shapley values on {args.dataset}')
 
 
     scores = np.load(f'{OUT_DIR}/feature_perm_scores_covs_matrix.npy')
@@ -165,13 +181,13 @@ if program == "covariances":
     importances_reduced = np.mean(importances, axis=1)
 
 
-    plot_pannel(importances_reduced, sensors, scores_reduced)
+    plot_pannel(importances_reduced, dataset, sensors, scores_reduced, OUT_DIR)
 
 
-if args.eigenval_info:
-    percent = np.load(f'{OUT_DIR}/percent_spd.npy')
-    eigenvalues_neg = np.load(f'{OUT_DIR}/spd_values.npy')
-    eigenval_pos = np.load(f'{OUT_DIR}/eigenval_pos.npy')
-    print("Percentage of SPD matrices" : np.mean(percent))
-    print("Mean negative eigenvalue", np.mean(eigenvalues_neg))
-    print("Mean positive eigenvalue", np.mean(eigenval_pos))
+    if args.eigenval_info:
+        percent = np.load(f'{OUT_DIR}/percent_spd.npy')
+        eigenvalues_neg = np.load(f'{OUT_DIR}/spd_values.npy')
+        eigenval_pos = np.load(f'{OUT_DIR}/eigenval_pos.npy')
+        print("Percentage of SPD matrices", np.mean(percent))
+        print("Mean negative eigenvalue", np.mean(eigenvalues_neg))
+        print("Mean positive eigenvalue", np.mean(eigenval_pos))
