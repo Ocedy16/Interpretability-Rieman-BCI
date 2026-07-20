@@ -57,61 +57,66 @@ if __name__ == "__main__":
     dataset = cfg["dataset"]
     SENSORS = cfg["sensors"]
 
-    OUT_DIR = f'Results/Permutation/{args.clf}/{args.dataset}/With_cue'
+    OUT_DIR = f'../../Results/Permutation/{args.clf}/{args.dataset}/With_cue/Modif_eeg'
 
     N_SPLITS = args.n_splits
     N_PERMS = args.n_perms
     SCORE_THRESHOLD = 0.75
 
-    classifier = args.clf
+    CLASSIFIERS = {
+    "MDM": MDM,
+    "TSClassifier": TSClassifier,
+}
 
-
+    classifier = CLASSIFIERS[args.clf]
+    visu_only = False
     paradigm = FilterBankMotorImagery(filters=[[7, 35]],events={"left_hand": 1, "right_hand": 2})
 
+    if visu_only == False:
 
-    perm = FeaturePermutation(dataset,paradigm, classifier)
-    perm.fit(n_iter = N_SPLITS, n_perm = N_PERMS)
+        perm = FeaturePermutation(dataset,paradigm, classifier)
+        perm.fit(n_iter = N_SPLITS, n_perm = N_PERMS)
 
-    results_dic = perm.results_dic
-    filename = os.path.join(OUT_DIR, 'results_dic.pkl')
-    with open(filename,'wb') as f:
-        pickle.dump(results_dic,f)
+        results_dic = perm.results_dic
+        filename = os.path.join(OUT_DIR, 'results_dic.pkl')
+        with open(filename,'wb') as f:
+            pickle.dump(results_dic,f)
 
-    all_results = []
-    all_scores = []
-    good_subjects_shap = []
-    good_subjects_scores = []
-    bad_subjects_shap = []
-    bad_subjects_scores = []
+        all_results = []
+        all_scores = []
+        good_subjects_shap = []
+        good_subjects_scores = []
+        bad_subjects_shap = []
+        bad_subjects_scores = []
 
-    for subject in dataset.subject_list:    
-        results = perm.results_dic['across_times'][subject]['importance']
-        scores = perm.results_dic['across_times'][subject]['accuracy']
-        all_results.append(np.mean(np.array(results),axis=0))
-        all_scores.append(np.mean(np.array(scores),axis=0))
+        for subject in dataset.subject_list:    
+            results = perm.results_dic['across_times'][subject]['importance']
+            scores = perm.results_dic['across_times'][subject]['accuracy']
+            all_results.append(np.mean(np.array(results),axis=0))
+            all_scores.append(np.mean(np.array(scores),axis=0))
 
-        if np.mean(np.array(scores),axis=0) >= SCORE_THRESHOLD : 
-            good_subjects_shap.append(np.mean(np.array(results),axis=0))
-            good_subjects_scores.append(np.mean(np.array(scores),axis=0))
+            if np.mean(np.array(scores),axis=0) >= SCORE_THRESHOLD : 
+                good_subjects_shap.append(np.mean(np.array(results),axis=0))
+                good_subjects_scores.append(np.mean(np.array(scores),axis=0))
 
-        else: 
-            bad_subjects_shap.append(np.mean(np.array(results),axis=0))
-            bad_subjects_scores.append(np.mean(np.array(scores),axis=0))
+            else: 
+                bad_subjects_shap.append(np.mean(np.array(results),axis=0))
+                bad_subjects_scores.append(np.mean(np.array(scores),axis=0))
+            
+        np.save(f'{OUT_DIR}/all_scores.npy', np.array(all_scores))  
+        np.save(f'{OUT_DIR}/good_subjects.npy', np.array(good_subjects_shap))
+        np.save(f'{OUT_DIR}/bad_subjects.npy', np.array(bad_subjects_shap))
+        np.save(f'{OUT_DIR}/good_subjects_scores.npy', np.array(good_subjects_scores))
+        np.save(f'{OUT_DIR}/bad_subjects_scores.npy', np.array(bad_subjects_scores))
+
+        plot_pannel(all_results, dataset, SENSORS, all_scores, OUT_DIR,cbar_type='Permutation', suptitle = f"Feature Permutation Importance on {args.dataset}")
+
         
-    np.save(f'{OUT_DIR}/all_scores.npy', np.array(all_scores))  
-    np.save(f'{OUT_DIR}/good_subjects.npy', np.array(good_subjects_shap))
-    np.save(f'{OUT_DIR}/bad_subjects.npy', np.array(bad_subjects_shap))
-    np.save(f'{OUT_DIR}/good_subjects_scores.npy', np.array(good_subjects_scores))
-    np.save(f'{OUT_DIR}/bad_subjects_scores.npy', np.array(bad_subjects_scores))
 
-    plot_pannel(all_results, SENSORS, all_scores,cbar_type='Permutation')
-
-
-
-    #good_subjects_shap = np.load(f'{OUT_DIR}/good_subjects.npy')
-    #bad_subjects_shap = np.load(f'{OUT_DIR}/bad_subjects.npy')
-    #good_subjects_scores = np.load(f'{OUT_DIR}/good_subjects_scores.npy')
-    #bad_subjects_scores = np.load(f'{OUT_DIR}/bad_subjects_scores.npy')
+    good_subjects_shap = np.load(f'{OUT_DIR}/good_subjects.npy')
+    bad_subjects_shap = np.load(f'{OUT_DIR}/bad_subjects.npy')
+    good_subjects_scores = np.load(f'{OUT_DIR}/good_subjects_scores.npy')
+    bad_subjects_scores = np.load(f'{OUT_DIR}/bad_subjects_scores.npy')
 
 
 
@@ -122,11 +127,14 @@ if __name__ == "__main__":
                 title = f"Subjects with a classif score $\\geq$ {SCORE_THRESHOLD}\n Mean Score : {np.mean(np.array(good_subjects_scores)):.2f}",
                 vlim=(v_min,v_max),
                 savefile_name=f'{OUT_DIR}/Good_subjects.pdf',
-                cbar_type='Permutation')
+                cbar_type='Permutation',
+                suptitle = f"Feature Permutation Importance on {args.dataset}")
 
 
     plot_topomap(np.mean(np.array(bad_subjects_shap),axis=0),SENSORS,
                 title = f"Subjects with a classif score $< {SCORE_THRESHOLD}$\n Mean Score : {np.mean(np.array(bad_subjects_scores)):.2f}",
                 vlim=(v_min,v_max),
                 savefile_name=f'{OUT_DIR}/Bad_subjects.pdf',
-                cbar_type='Permutation')
+                cbar_type='Permutation',
+                suptitle = f"Feature Permutation Importance on {args.dataset}",
+)

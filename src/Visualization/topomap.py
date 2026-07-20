@@ -53,7 +53,7 @@ def plot_topomap(
 
             cbar.set_label("") 
             cbar.ax.text(
-                0.5, 1.12,
+                0.5, 1,
                 "Left Hand",
                 ha="center",
                 va="bottom",
@@ -61,7 +61,7 @@ def plot_topomap(
             )
 
             cbar.ax.text(
-                0.5, -0.12,
+                0.5, -0.02,
                 "Right Hand",
                 ha="center",
                 va="top",
@@ -79,7 +79,7 @@ def plot_topomap(
         
         
         
-def plot_pannel(values, dataset, sensors, scores, OUT_DIR, cbar_type = 'Shapley'):
+def plot_pannel(values, dataset, sensors, scores, OUT_DIR, cbar_type = 'Shapley', suptitle = "Shapley values on dataset"):
     n_subjects = len(values)
     n_cols = 4
     n_rows = math.ceil(n_subjects / n_cols)
@@ -101,6 +101,7 @@ def plot_pannel(values, dataset, sensors, scores, OUT_DIR, cbar_type = 'Shapley'
             show_cbar=True,
             cbar_type = cbar_type,
             vlim=(v_min,v_max),
+            suptitle = suptitle 
         )
 
     for j in range(i + 1, len(axes)):

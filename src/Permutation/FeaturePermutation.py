@@ -46,11 +46,6 @@ class FeaturePermutation:
         return np.mean(scores)
 
     def _single_iteration(self, data, y, method, n_perm, seed=None):
-        rng = np.random.default_rng(seed)
-
-        indices = rng.permutation(len(data))
-        data = data[indices]
-        y = y[indices]
 
         train_eeg, test_eeg, train_y, test_y = train_test_split(
             data,

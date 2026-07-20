@@ -38,7 +38,7 @@ if __name__ == "__main__":
     dataset = cfg["dataset"]
     SENSORS = cfg["sensors"]
 
-    OUT_DIR = f"../../Results/Shapley/{args.clf}/{args.dataset}/Shapley_optim"
+    OUT_DIR = f"../../Results/Shapley/{args.clf}/{args.dataset}/Shapley_SPD/Heuristic"
 
     SCORE_THRESHOLD = 0.75
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     ]
 
 
-    shap_values = np.load(f'{OUT_DIR}/all_subjects_mdm.npy')
+    shap_values = np.load(f'{OUT_DIR}/all_shap_values.pkl', allow_pickle=True)
 
     
     shap_per_subject_list = []
@@ -157,4 +157,4 @@ if __name__ == "__main__":
             )
             X_diff_power_mean.append(power_diff)
 
-        shap_beeswarm(np.array(shap_per_subject_list[i])[0:2,:], SENSORS, subject, OUT_DIR) #, regions, channel_to_hemisphere, OUT_DIR)
+        shap_beeswarm_grouped(np.array(shap_per_subject_list[i]), SENSORS, args.dataset, subject, regions, channel_to_hemisphere, OUT_DIR)

@@ -54,6 +54,7 @@ def filter_regions(regions, sensor_names):
 def shap_beeswarm_grouped(
     shap_values,
     sensor_names,
+    dataset,
     subject,
     regions,
     channel_to_hemisphere,
@@ -105,8 +106,12 @@ def shap_beeswarm_grouped(
         hue="hemisphere",  
         jitter=0.25,
         alpha=0.6,
-        size=2
+        size=3
     )
+
+    ax.set_xlabel("Shapley values for class left_hand")
+    ax.set_ylabel("Regions")
+
 
     plt.axvline(0, color="black", linewidth=1)
 
@@ -114,7 +119,7 @@ def shap_beeswarm_grouped(
     for i in range(len(region_order) - 1):
         plt.axhline(i + 0.5, color="grey", linewidth=0.6, alpha=0.5)
 
-    plt.title(title or f"SHAP grouped regions + lateralization - subject {subject}")
+    plt.title(title or f"SHAP grouped regions dataset {dataset} - subject {subject}")
 
     plt.legend(title="Hemisphere", loc="upper right")
 

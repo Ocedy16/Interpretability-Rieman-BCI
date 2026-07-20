@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     if args.savefile is None:
 
-        OUT_DIR = f'Results/Shapley/{args.clf}/{args.dataset}'
+        OUT_DIR = f'../../Results/Shapley/{args.clf}/{args.dataset}/Shapley_SPD/Heuristic'
 
     else :
 
@@ -98,9 +98,7 @@ if __name__ == "__main__":
         bad_subjects_scores = []
 
         for subject in dataset.subject_list :  
-            print("Subject",subject)  
             X,y,meta = paradigm.get_data(dataset=dataset, subjects=[subject])
-            print(y)
             shap_values, scores = compute_shapley(X,y,N_SPLITS, pipeline)
 
             #On moyenne sur tous les splits
@@ -133,7 +131,7 @@ if __name__ == "__main__":
         np.save(f"{OUT_DIR}/bad_subjects_scores.npy", np.array(bad_subjects_scores))
 
 
-        plot_pannel(all_mean_shap_values, dataset, SENSORS, all_scores, OUT_DIR)
+        plot_pannel(all_mean_shap_values, dataset, SENSORS, all_scores, OUT_DIR,suptitle = f"Shapley values on dataset {args.dataset}")
 
     good_subjects_shap = np.load(f"{OUT_DIR}/good_subjects.npy",)
     bad_subjects_shap = np.load(f"{OUT_DIR}/bad_subjects.npy")
@@ -146,10 +144,12 @@ if __name__ == "__main__":
     plot_topomap(np.mean(np.array(good_subjects_shap),axis=0),SENSORS,
                 title = f"Subjects with a classif score $\\geq$ {SCORE_THRESHOLD}\n Mean Score : {np.mean(np.array(good_subjects_scores)):.2f}",
                 vlim=(v_min,v_max),
-                savefile_name=f"{OUT_DIR}/Good_subjects.pdf")
+                savefile_name=f"{OUT_DIR}/Good_subjects.pdf",
+                suptitle = f"Shapley values on dataset {args.dataset}")
 
 
     plot_topomap(np.mean(np.array(bad_subjects_shap),axis=0),SENSORS,
                 title = f"Subjects with a classif score $< {SCORE_THRESHOLD}$\n Mean Score : {np.mean(np.array(bad_subjects_scores)):.2f}",
                 vlim=(v_min,v_max),
-                savefile_name=f"{OUT_DIR}/Bad_subjects.pdf")
+                savefile_name=f"{OUT_DIR}/Bad_subjects.pdf",
+                suptitle = f"Shapley values on dataset {args.dataset}")

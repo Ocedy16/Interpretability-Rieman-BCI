@@ -3,6 +3,8 @@ import numpy as np
 from pyriemann.classification import MDM
 from pyriemann.utils.mean import mean_riemann
 from pyriemann.estimation import Covariances
+from src.data.dataset_config import DATASET_CONFIG
+from src.Visualization.topomap import plot_pannel, plot_topomap
 from moabb.paradigms import FilterBankMotorImagery
 from moabb.datasets import BNCI2014_001, Dreyer2023C
 from sklearn.model_selection import train_test_split
@@ -135,9 +137,24 @@ def KernelShap(C_test, pipeline: MDM, n_samples: int = 200):
 
 np.random.seed(3)
 
+OUT_DIR = '../../Results/Shapley/MDM/Dreyer2023C/Shapley_optim/Lambda_1'
+SCORE_THRESHOLD = 0.75  
+
+all_scores = []
+all_mean_shap_values = []
+good_subjects_shap = []
+good_subjects_scores = []
+bad_subjects_shap = []
+bad_subjects_scores = []
+
 paradigm = FilterBankMotorImagery(filters=[(7, 35)])
-dataset = BNCI2014_001()
-for subject in dataset.subject_list[2:] : 
+dataset = Dreyer2023C()
+
+# Récupération automatique des noms de capteurs (à adapter si nécessaire)
+X_dummy, _, _ = paradigm.get_data(dataset=dataset, subjects=[dataset.subject_list[0]])
+SENSORS = DATASET_CONFIG['Dreyer2023C']['sensors']  
+
+for subject in dataset.subject_list: 
     t0 = time.perf_counter()
     X, y, meta = paradigm.get_data(dataset=dataset, subjects=[subject])
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=3)
@@ -149,14 +166,58 @@ for subject in dataset.subject_list[2:] :
     mdm = MDM()
     mdm.fit(C_train, y_train)
 
+    score = mdm.score(C_test, y_test)
+    all_scores.append(score)
+
     dim = X.shape[1]
     manifold = pymanopt.manifolds.SymmetricPositiveDefinite(dim)
 
     mean_matrix = mean_riemann(C_train)
     shap_values = KernelShap(C_test, mdm, n_samples=1000)
     elapsed = time.perf_counter() - t0
-    print(f"KernelShap: {elapsed:.2f} s")
+    print(f"KernelShap pour sujet {subject}: {elapsed:.2f} s")
 
+    # Sauvegarde individuelle des SHAP values
     shap_array = np.array(shap_values)
-    np.save(f"Results/Shapley/MDM/BNCI2014_001/Shapley_optim/shap_values_subject_{subject}_mdm.npy", shap_array)
-    print("Shape SHAP values :", shap_array.shape)
+    np.save(f"{OUT_DIR}/shap_values_subject_{subject}_mdm.npy", shap_array)
+    
+    mean_shap_values = np.mean(shap_array, axis=0)
+    all_mean_shap_values.append(mean_shap_values)
+    
+    if score > SCORE_THRESHOLD: 
+        good_subjects_shap.append(mean_shap_values) # Stocker la moyenne par sujet pour le topomap global
+        good_subjects_scores.append(score)
+    else: 
+        bad_subjects_shap.append(mean_shap_values)
+        bad_subjects_scores.append(score)
+
+# Sauvegardes globales
+np.save(f"{OUT_DIR}/all_scores.npy", np.array(all_scores))    
+np.save(f"{OUT_DIR}/good_subjects.npy", np.array(good_subjects_shap))
+np.save(f"{OUT_DIR}/bad_subjects.npy", np.array(bad_subjects_shap))
+np.save(f"{OUT_DIR}/good_subjects_scores.npy", np.array(good_subjects_scores))
+np.save(f"{OUT_DIR}/bad_subjects_scores.npy", np.array(bad_subjects_scores))
+
+
+
+# Plots (En supposant que plot_pannel et plot_topomap soient définis dans tes imports non affichés)
+plot_pannel(all_mean_shap_values, dataset, SENSORS, all_scores, OUT_DIR)
+
+v_max = np.max(np.abs(np.mean(np.array(good_subjects_shap), axis=0))) if good_subjects_shap else 0.1
+v_min = -v_max
+
+if good_subjects_shap:
+    plot_topomap(np.mean(np.array(good_subjects_shap), axis=0), SENSORS,
+                title=f"Subjects with a classif score $\\geq$ {SCORE_THRESHOLD}\n Mean Score : {np.mean(np.array(good_subjects_scores)):.2f}",
+                vlim=(v_min, v_max),
+                savefile_name=f"{OUT_DIR}/Good_subjects.pdf",
+                cmap='PiYG',
+                suptitle=f'Shapley values on Dreyer2023C')
+
+if bad_subjects_shap:
+    plot_topomap(np.mean(np.array(bad_subjects_shap), axis=0), SENSORS,
+                title=f"Subjects with a classif score $< {SCORE_THRESHOLD}$\n Mean Score : {np.mean(np.array(bad_subjects_scores)):.2f}",
+                vlim=(v_min, v_max),
+                savefile_name=f"{OUT_DIR}/Bad_subjects.pdf",
+                cmap='PiYG',
+                suptitle=f'Shapley values on Dreyer2023C')

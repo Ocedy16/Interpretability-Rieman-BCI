@@ -1,144 +1,58 @@
-from scipy.stats import spearmanr, weightedtau, kendalltau
+from scipy.stats import spearmanr, weightedtau, kendalltau, pearsonr
 import numpy as np
 import pickle
 from moabb.datasets import BNCI2014_001, Dreyer2023C, Beetl2021_A
+from src.data.dataset_config import DATASET_CONFIG
 from itertools import combinations
 import pandas as pd
 import rbo
+import argparse
 
-DATASET_CONFIG = {
-    "BNCI2014_001": dict(
-        dataset=BNCI2014_001(),
-        session="0train",
-        good_subjects=np.array([1, 3, 8, 9]),
-        bad_subjects=np.array([2, 4, 5, 6, 7]),
-        sensors =  [
-        "Fz",
-        "FC3",
-        "FC1",
-        "FCz",
-        "FC2",
-        "FC4",
-        "C5",
-        "C3",
-        "C1",
-        "Cz",
-        "C2",
-        "C4",
-        "C6",
-        "CP3",
-        "CP1",
-        "CPz",
-        "CP2",
-        "CP4",
-        "P1",
-        "Pz",
-        "P2",
-        "POz",
-    ]),
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=list(DATASET_CONFIG.keys()),
+        required=True,
+        help="Dataset à utiliser : BNCI2014_001, Dreyer2023C, Beetl2021_A"
+    )
+    parser.add_argument(
+        "--clf",
+        type=str,
+        choices=["MDM", "TSClassifier"],
+        required=True,
+        help="Classifieur à utiliser : MDM, TSClassifier"
+    )
+    parser.add_argument(
+        "--method",
+        type = str,
+        required = True,
+        help = "Méthodes possibles : Shapley ou Permutations"
+    )
 
-    "Dreyer2023C": dict(
-        dataset=Dreyer2023C(),
-        session="0",
-        good_subjects=np.array([83, 85, 87]),
-        bad_subjects=np.array([82,84,86]),
-        sensors = [
-    'Fz', 'FCz', 'Cz', 'CPz', 'Pz', 'C1', 'C3', 'C5', 'C2', 'C4', 'C6', 'F4', 'FC2', 'FC4', 'FC6', 'CP2',
-  'CP4', 'CP6', 'P4', 'F3', 'FC1', 'FC3', 'FC5', 'CP1', 'CP3', 'CP5', 'P3'
-]
-    ),
-    "Beetl2021_A": dict(
-        dataset=Beetl2021_A(),
-        session="0",
-        good_subjects=np.array([1, 3]),
-        bad_subjects=np.array([2]),
-        sensors = [
-                "Fp1",
-                "Fz",
-                "F3",
-                "F7",
-                "FT9",
-                "FC5",
-                "FC1",
-                "C3",
-                "T7",
-                "TP9",
-                "CP5",
-                "CP1",
-                "Pz",
-                "P3",
-                "P7",
-                "O1",
-                "Oz",
-                "O2",
-                "P4",
-                "P8",
-                "TP10",
-                "CP6",
-                "CP2",
-                "C4",
-                "T8",
-                "FT10",
-                "FC6",
-                "FC2",
-                "F4",
-                "F8",
-                "Fp2",
-                "AF7",
-                "AF3",
-                "AFz",
-                "F1",
-                "F5",
-                "FT7",
-                "FC3",
-                "FCz",
-                "C1",
-                "C5",
-                "TP7",
-                "CP3",
-                "P1",
-                "P5",
-                "PO7",
-                "PO3",
-                "POz",
-                "PO4",
-                "PO8",
-                "P6",
-                "P2",
-                "CPz",
-                "CP4",
-                "TP8",
-                "C6",
-                "C2",
-                "FC4",
-                "FT8",
-                "F6",
-                "F2",
-                "AF4",
-                "AF8",
-            ],
-    ),
-}
+    parser.add_argument(
+        "--method_detail",
+        type = str,
+        required = True,
+        help = "Pour la Feature Permutation, les choix sont eeg ou covs et pour les valeurs de Shapley eeg, spd ou optim"
+    )
 
-cfg = DATASET_CONFIG["BNCI2014_001"]
-dataset = cfg["dataset"]
-session = cfg["session"]
-good_subjects = cfg["good_subjects"]
-bad_subjects = cfg["bad_subjects"]
-SENSORS = np.array(cfg["sensors"])
+    return parser.parse_args()
 
-method = "permutation"
+if __name__ == "__main__":
+    args = parse_args()
+    cfg = DATASET_CONFIG[args.dataset]
+    dataset = cfg["dataset"]
+    SENSORS = cfg["sensors"]
 
-OUT_DIR= "Results/Permutation/MDM/BNCI2014_001/With_cue"
-OUT_DIR_SHAP = "Results/Shapley/MDM/Dreyer2023C"
-
+    OUT_DIR = f'../../Results/Permutation/{args.clf}/{args.dataset}/With_cue'
+    OUT_DIR_SHAP = f'../../Results/Shapley/{args.clf}/{args.dataset}'
 
 
 def topk_overlap(importance_A, importance_B, k=5):
     top_k_A = set(np.argsort(importance_A)[-k:])
     top_k_B = set(np.argsort(importance_B)[-k:])
-    print(SENSORS[np.argsort(importance_A)[-k:]])
-    print(SENSORS[np.argsort(importance_B)[-k:]])
     
     overlap = len(top_k_A & top_k_B)
     return overlap / k 
@@ -147,40 +61,40 @@ def importance_to_ranking(importance_values, channel_names):
     sorted_idx = np.argsort(importance_values)[::-1] 
     return [channel_names[i] for i in sorted_idx]
 
-
-if method == "permutation":
-    eeg_importance = np.load(f"{OUT_DIR}/Modif_EEG/results_dic.pkl",allow_pickle=True)
+if args.method == "Permutation":
+    eeg_importance = np.load(f"{OUT_DIR}/Modif_eeg/results_dic.pkl",allow_pickle=True)
     covs_importance =  np.load(f"{OUT_DIR}/Modif_covs/feature_perm_importances_covs_matrix.npy")
-    vars_importance = np.load(f"{OUT_DIR}/Modif_vars/feature_perm_importances_var_matrix.npy")
-    tangent_space_importance = np.load(f"{OUT_DIR}/feature_perm_importances_covs_matrix.npy")
-    across_trials_importance = np.load(f"{OUT_DIR}/Modif_across_trials/feature_perm_importances_covs_matrix.npy")
+    mean_importance =  np.load(f"{OUT_DIR}/Modif_eeg/good_subjects.npy")
+    mean_importance_covs = np.load(f"{OUT_DIR}/Modif_covs/good_subjects.npy")
+    covs_importance = np.mean(covs_importance, axis=1)
+    mean_importance_covs = np.mean(mean_importance_covs, axis=0)
 
     eeg_importance = [np.mean(eeg_importance['across_times'][i]["importance"],axis=0) for i in dataset.subject_list]
-    covs_importance = np.mean(covs_importance,axis=1)
-    vars_importance = np.mean(vars_importance,axis=1)
-    tangent_space_importance = np.mean(tangent_space_importance,axis=1)
-    across_trials_importance = np.mean(across_trials_importance, axis=1)
+    mean_importance = np.mean(mean_importance,axis=0)
 
     importance_methods = {'eeg':eeg_importance,
-                      'covs':covs_importance,
-                      'vars':vars_importance,
-                      'tangent_space':tangent_space_importance,
-                      'across_trials': across_trials_importance}
+                        "covs": covs_importance,
+                      'mean_eeg': mean_importance,
+                      'mean_covs': mean_importance_covs}
 
-    rhos = {}
-    topks = {}
+    corrs = {}
 
     results = {subject: {} for subject in dataset.subject_list}
 
-    for method_A, method_B in combinations(importance_methods.keys(), 2):
-        for i, subject in enumerate(dataset.subject_list):
-            importance_A = importance_methods[method_A][i]
-            importance_B = importance_methods[method_B][i]
-            
-            rho = rbo.RankingSimilarity(importance_to_ranking(importance_A,SENSORS), importance_to_ranking(importance_B,SENSORS)).rbo()
-            tk = topk_overlap(importance_A, importance_B)
-            
-            results[subject][(method_A, method_B)] = {"rho": rho, "topk": tk}
+    
+    for i, subject in enumerate(dataset.subject_list):
+        importance_A = importance_methods[args.method_detail][i]
+        importance_B = importance_methods[f'mean_{args.method_detail}']
+        print(importance_A,importance_B)
+        
+        rbo_val = rbo.RankingSimilarity(importance_to_ranking(importance_A,SENSORS), importance_to_ranking(importance_B,SENSORS)).rbo(p=0.8)
+        rho,_ = spearmanr(importance_A,importance_B)
+        topk = topk_overlap(importance_A, importance_B)
+        kentau,_ = kendalltau(importance_A, importance_B)
+        weighted_kentau,_ = weightedtau(importance_A, importance_B)
+        pearson,_ = pearsonr(importance_A,importance_B)
+        
+        results[subject][('eeg', 'mean')] = {"rho": rho, "topk": topk, "rbo" : rbo_val, 'kentau' : kentau, 'weighted_kentau' : weighted_kentau, 'pearson' : pearson}
 
     rows = []
     for subject in dataset.subject_list:
@@ -188,72 +102,72 @@ if method == "permutation":
         for pair, values in results[subject].items():
             row[f"rho_{pair[0]}_{pair[1]}"] = values["rho"]
             row[f"topk_{pair[0]}_{pair[1]}"] = values["topk"]
+            row[f"rbo_{pair[0]}_{pair[1]}"] = values["rbo"]
+            row[f"kentau_{pair[0]}_{pair[1]}"] = values["kentau"]
+            row[f"weighted_kentau_{pair[0]}_{pair[1]}"] = values["weighted_kentau"]
+            row[f"pearson_{pair[0]}_{pair[1]}"] = values["pearson"]
         rows.append(row)
 
     df = pd.DataFrame(rows)
     print(df)
-    df.to_csv(f"{OUT_DIR}/Rankings.csv")
-
-    good_subjects_idx = [0,2,7,8]
-
-    importance_methods_good_mean = {
-        name: np.mean([values[i] for i in good_subjects_idx], axis=0)
-        for name, values in importance_methods.items()
-    }
-
-    results_good = {}
-    print("Good Subjects")
-
-    for method_A, method_B in combinations(importance_methods_good_mean.keys(), 2):
-        rho = rbo.RankingSimilarity(importance_to_ranking(importance_methods_good_mean[method_A],SENSORS), importance_to_ranking(importance_methods_good_mean[method_B],SENSORS)).rbo()
-        tk = topk_overlap(importance_methods_good_mean[method_A], importance_methods_good_mean[method_B])
-        results_good[(method_A, method_B)] = {"rho": rho, "topk": tk}
-
-    for pair, vals in results_good.items():
-        print(f"{pair}: rho = {vals['rho']:.3f}, topk = {vals['topk']:.3f}")
+    df.to_csv(f"{OUT_DIR}/Modif_{args.method_detail}/Rankings_eeg_vs_good_subjects.csv")
 
 
-    bad_subjects_idx = [1,3,4,5,6]
-
-    importance_methods_bad_mean = {
-        name: np.mean([values[i] for i in bad_subjects_idx], axis=0)
-        for name, values in importance_methods.items()
-    }
-
-    results_bad = {}
-
-    for method_A, method_B in combinations(importance_methods_bad_mean.keys(), 2):
-        rho = rbo.RankingSimilarity(importance_to_ranking(importance_methods_bad_mean[method_A],SENSORS), importance_to_ranking(importance_methods_bad_mean[method_B],SENSORS)).rbo()
-        tk = topk_overlap(importance_methods_bad_mean[method_A], importance_methods_bad_mean[method_B])
-        results_bad[(method_A, method_B)] = {"rho": rho, "topk": tk}
-
-    for pair, vals in results_bad.items():
-        print(f"{pair}: rho = {vals['rho']:.3f}, topk = {vals['topk']:.3f}")
-
-
-if method == "shapley" :
+if args.method == "Shapley" :
     rhos = {}
     topks = {}
 
     results = {}
     shapley_eeg = np.load(f"{OUT_DIR_SHAP}/New_results_n_samples_1000/all_shap_values.pkl", allow_pickle=True)
-    shapley_eeg = np.mean(shapley_eeg[2][0],axis=0)[0]
-    shapley_optim = np.load(f"{OUT_DIR_SHAP}/Shapley_optim/shap_values_subject_85_mdm.npy")
-    shapley_optim = np.mean(shapley_optim,axis=0)
-    print(len(shapley_optim))
+    shapley_eeg = np.mean(np.mean(shapley_eeg,axis=1),axis=1)[:,0,:]
+    shapley_spd = np.load(f"{OUT_DIR_SHAP}/Shapley_SPD/all_shap_values.pkl",allow_pickle=True)
+    shapley_spd = np.mean(np.mean(shapley_spd,axis=1),axis=1)[:,0,:]
+    shapley_optim = np.load(f"{OUT_DIR_SHAP}/Shapley_optim/Lambda_1/all_subjects_mdm.npy")
+    shapley_optim = np.mean(shapley_optim, axis=1)
+
+    mean_shapley_eeg = np.load(f'{OUT_DIR_SHAP}/New_results_n_samples_1000/good_subjects.npy')
+    mean_shapley_spd = np.load(f'{OUT_DIR_SHAP}/Shapley_SPD/good_subjects.npy')
+    mean_shapley_optim = np.load(f'{OUT_DIR_SHAP}/Shapley_optim/Lambda_1/good_subjects.npy')
+    mean_shapley_eeg = np.mean(mean_shapley_eeg, axis=0)
+    mean_shapley_spd = np.mean(mean_shapley_spd, axis=0)
+    mean_shapley_optim = np.mean(mean_shapley_optim, axis=0)
 
     importance_methods_shap = {'eeg':shapley_eeg,
-                                'optim':shapley_optim}
+                                'spd': shapley_spd,
+                                'optim':shapley_optim,
+                                'mean_eeg': mean_shapley_eeg,
+                      'mean_spd': mean_shapley_spd,
+                      'mean_optim': mean_shapley_optim}
 
-    for method_A, method_B in combinations(importance_methods_shap.keys(), 2):
-        importance_A = importance_methods_shap[method_A]
-        importance_B = importance_methods_shap[method_B]
-        
-        rho = rbo.RankingSimilarity(importance_to_ranking(importance_A,SENSORS), importance_to_ranking(importance_B,SENSORS)).rbo()
-        tk = topk_overlap(importance_A, importance_B)
-        
-        results[(method_A, method_B)] = {"rho": rho, "topk": tk}
+    results = {subject: {} for subject in dataset.subject_list}
 
-    for pair, vals in results.items():
-        print(f"{pair}: rho = {vals['rho']:.3f}, topk = {vals['topk']:.3f}")
+    
+    for i, subject in enumerate(dataset.subject_list):
+        importance_A = importance_methods_shap[args.method_detail][i]
+        importance_B = importance_methods_shap[f'mean_{args.method_detail}']
+        
+        rbo_val = rbo.RankingSimilarity(importance_to_ranking(importance_A,SENSORS), importance_to_ranking(importance_B,SENSORS)).rbo()
+        rho,_ = spearmanr(importance_A,importance_B)
+        topk = topk_overlap(importance_A, importance_B)
+        kentau,_ = kendalltau(importance_A, importance_B)
+        weighted_kentau,_ = weightedtau(importance_A, importance_B)
+        pearson,_ = pearsonr(importance_A,importance_B)
+        
+        results[subject][('eeg', 'mean')] = {"rho": rho, "topk": topk, "rbo" : rbo_val, 'kentau' : kentau, 'weighted_kentau' : weighted_kentau, 'pearson' : pearson}
+
+    rows = []
+    for subject in dataset.subject_list:
+        row = {"subject": subject}
+        for pair, values in results[subject].items():
+            row[f"rho_{pair[0]}_{pair[1]}"] = values["rho"]
+            row[f"topk_{pair[0]}_{pair[1]}"] = values["topk"]
+            row[f"rbo_{pair[0]}_{pair[1]}"] = values["rbo"]
+            row[f"kentau_{pair[0]}_{pair[1]}"] = values["kentau"]
+            row[f"weighted_kentau_{pair[0]}_{pair[1]}"] = values["weighted_kentau"]
+            row[f"pearson_{pair[0]}_{pair[1]}"] = values["pearson"]
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    print(df)
+    df.to_csv(f"{OUT_DIR_SHAP}/Rankings_eeg_vs_good.csv")
 

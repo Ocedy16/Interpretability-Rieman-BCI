@@ -1,8 +1,12 @@
 import numpy as np
 import shap
+import torch
 from shap import KernelExplainer
 from functools import partial
 from sklearn.model_selection import train_test_split
+from pyriemann.estimation import Covariances
+from src.SPDNet.SPDNet import SPDNetBatchNorm, train_model
+from spd_learn.modules import BiMap, CovLayer, LogEig, ReEig
 
 
 def stable_predict_multi(mask_2d, n_channels, n_times, current_run_signal, background_signals, pipeline):
@@ -44,7 +48,8 @@ def stable_predict(mask_2d,n_channels,n_times,current_run_signal,random_referenc
             else:
                 X_reconstructed[i, ch, :] = random_reference_signal[ch, :]
 
-    return pipeline.predict_proba(X_reconstructed)[:,0]
+    return pipeline.predict_proba(X_reconstructed)
+
 
 
 def KernelShap(X_train,X_test,pipeline,baseline=None, multi_baseline = False, n_samples=2000):
@@ -54,6 +59,8 @@ def KernelShap(X_train,X_test,pipeline,baseline=None, multi_baseline = False, n_
     
     if baseline is None :
         baseline = np.mean(X_train,axis=0)
+    
+    #print(baseline)
         
     predict_fn = stable_predict_multi if multi_baseline else stable_predict
 
@@ -96,12 +103,13 @@ def stable_predict_deep(mask_2d,n_channels,n_times,current_run_signal,random_ref
 
 
 
-def KernelShapDeep(X_train,X_test,model,n_samples=2000):
+def KernelShapDeep(X_train,X_test,model,baseline, n_samples=2000):
+    cov_layer = CovLayer()
     X_train = X_train.detach().numpy()
+    
     X_test  = X_test.detach().numpy()
     n_trials, n_channels, n_times = X_train.shape
-    random_reference_signal = np.mean(X_train, axis=0)
-
+    random_reference_signal = baseline
     all_shap_values = []
     for run_index in range(X_test.shape[0]):
         current_run_signal = X_test[run_index] 
@@ -119,6 +127,106 @@ def KernelShapDeep(X_train,X_test,model,n_samples=2000):
 
     
 def compute_shapley(X,y, n_splits, model_config, deep= False):
+    if deep:
+
+        all_shap_values = []
+        all_scores = []
+
+        for i in range(n_splits):
+
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y,
+                train_size=0.8,
+                stratify=y,
+                random_state=i
+            )
+
+            covariance = Covariances()
+            covs = covariance.fit_transform(X_train)
+
+            variances = np.array([
+                [covs[j,k,k] for k in range(covs.shape[1])]
+                for j in range(covs.shape[0])
+            ])
+            print(variances.shape)
+
+            var_left = np.mean(variances[y_train==0], axis=0)
+            var_right = np.mean(variances[y_train==1], axis=0)
+            print(var_left.shape)
+            var_baseline = (var_left + var_right) / 2
+            print(var_baseline.shape)
+
+            mean_signal = np.mean(X_train, axis=0)
+
+            noise = np.random.normal(
+                0,
+                scale=np.sqrt(var_baseline[:, np.newaxis]),
+                size=mean_signal.shape
+            )
+
+            baseline = mean_signal + noise
+
+            X_train_t = torch.tensor(X_train).float()
+            X_test_t = torch.tensor(X_test).float()
+
+            y_train_t = torch.tensor(y_train).long()
+            y_test_t = torch.tensor(y_test).long()
+
+            model = SPDNetBatchNorm(
+                **model_config,
+                input_type="raw"
+            ).float()
+
+
+            train_model(
+                model,
+                X_train_t,
+                y_train_t,
+                X_test_t,
+                y_test_t,
+                epochs=200,
+                lr=1e-3
+            )
+
+            shap_values = KernelShapDeep(
+                X_train_t,
+                X_test_t,
+                model,
+                baseline,
+                n_samples=1000
+            )
+            all_shap_values.append(shap_values)
+            all_scores.append((model(X_test_t).argmax(1) == y_test).float().mean().item())
+
+    else : 
+        pipeline = model_config
+        all_shap_values = []
+        all_scores = []
+        for i in range (n_splits):
+            print("Split",i)
+            X_train,X_test,y_train,y_test = train_test_split(X,y, train_size=0.8, stratify=y, random_state=i)
+            covariance = Covariances()
+            covs = covariance.transform(X_train)
+            vars = np.array([[covs[j,i,i] for i in range (covs.shape[1])] for j in range(covs.shape[0])])
+            var_left = np.mean(vars[y_train=='left_hand'], axis=0)
+            var_right = np.mean(vars[y_train=='right_hand'], axis=0)
+            print(var_left)
+            print(var_right)
+            var_baseline = (var_left + var_right) / 2
+            mean_signal = np.mean(X_train, axis=0)
+            noise = np.random.normal(0, scale=np.sqrt(var_baseline[:, np.newaxis]), size=mean_signal.shape)
+            print("noise",noise)
+            baseline = mean_signal + noise  
+            #print(covariance.fit_transform(baseline))
+            pipeline.fit(X_train,y_train)
+            print(pipeline.predict_proba(baseline[np.newaxis, :, :]))
+            shap_values = KernelShap(X_train,X_test, pipeline, baseline=baseline, n_samples=1000)
+            all_shap_values.append(shap_values)
+            all_scores.append(pipeline.score(X_test,y_test))
+
+    return all_shap_values, all_scores
+
+def compute_shapley_corr(X,y, n_splits, model_config, deep= False):
     if deep :
         all_shap_values = []
         all_scores = []
@@ -144,9 +252,19 @@ def compute_shapley(X,y, n_splits, model_config, deep= False):
         for i in range (n_splits):
             print("Split",i)
             X_train,X_test,y_train,y_test = train_test_split(X,y, train_size=0.8, stratify=y, random_state=i)
-            
+            covariance = Covariances()
+            covs = covariance.transform(X_train)
+            vars = np.array([[covs[j,i,i] for i in range (covs.shape[1])] for j in range(covs.shape[0])])
+            var_left = np.mean(vars[y_train=='left_hand'], axis=0)
+            var_right = np.mean(vars[y_train=='right_hand'], axis=0)
+            var_baseline = (var_left + var_right) / 2
+            mean_signal = np.mean(X_train, axis=0)
+            noise = np.random.normal(0, scale=np.sqrt(var_baseline[:, np.newaxis]), size=mean_signal.shape)
+            baseline = mean_signal + noise  
+            #print(covariance.fit_transform(baseline))
             pipeline.fit(X_train,y_train)
-            shap_values = KernelShap(X_train,X_test, pipeline, n_samples=1000)
+            print(pipeline.predict_proba(baseline[np.newaxis, :, :]))
+            shap_values = KernelShap(X_train,X_test, pipeline, baseline=baseline, n_samples=1000)
             all_shap_values.append(shap_values)
             all_scores.append(pipeline.score(X_test,y_test))
 

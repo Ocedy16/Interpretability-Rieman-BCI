@@ -2,10 +2,10 @@ import torch
 import numpy as np
 import torch.nn as nn
 #from spd_learn.models import SPDNet
-from spd_learn.functional import covariance
 from spd_learn.modules import BiMap, CovLayer, LogEig, ReEig, SPDBatchNormMeanVar
 from moabb.datasets import BNCI2014_001, Dreyer2023C, Beetl2021_A
 from moabb.paradigms import FilterBankMotorImagery
+from spd_learn.functional import covariance
 from sklearn.model_selection import train_test_split
 import pickle
 import os
@@ -13,9 +13,9 @@ from sklearn.neighbors import kneighbors_graph
 from sklearn.preprocessing import LabelEncoder
 from warnings import warn
 import mne
-
-
-import mne
+print("LOADING SPDNet FROM:", __file__)
+from spd_learn.functional import covariance
+print("COVARIANCE IMPORTED:", covariance)
 
 np.random.seed(3)
 

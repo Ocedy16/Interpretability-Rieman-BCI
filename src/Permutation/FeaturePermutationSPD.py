@@ -1,6 +1,11 @@
 import numpy as np
 
 
+percent_spd = []
+spd_values = []
+eigenval_pos = []
+
+
 def permute_sensor_variances(matrix, sensor_idx, rng):
     matrix_mod = matrix.copy()
     n_features = matrix.shape[0]
